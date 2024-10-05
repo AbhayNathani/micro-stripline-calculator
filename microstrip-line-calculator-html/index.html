@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <style>
+        body {
+            padding-top: 1rem;
+            max-width: 900px;
+            margin: auto;
+        }
+        .result-heading {
+            font-size: 1.5rem; /* Increase font size */
+            font-weight: bold; /* Make text bold */
+            
+        }
+        .result-value {
+            font-size: 1.25rem; /* Increase font size */
+            font-weight: bold; /* Make text bold */
+        }
+
+        .result-box {
+        background-color: white;
+        padding: 1rem;
+        border-radius: 5px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+    label {
+        font-weight: bold;
+    }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="row">
+        <div class="col">
+            <div class="form-group">
+                <label for="targetImpedance">Target Impedance Z<sub>0</sub> (Ω)</label>
+                <input type="number" class="form-control" id="targetImpedance" value="50" step="1">
+            </div>
+            <div class="form-group">
+                <label for="substrateHeight">Substrate Height h (mm)</label>
+                <input type="number" class="form-control" id="substrateHeight" value="1.6" step="0.1">
+            </div>
+            <div class="form-group">
+                <label for="initialStepFraction">Initial Step Fraction</label>
+                <input type="number" class="form-control" id="initialStepFraction" value="0.5" step="0.05">
+            </div>
+            <div class="form-group">
+                <label for="tolerance">Tolerance (%)</label>
+                <input type="number" class="form-control" id="tolerance" value="0.01" step="0.01">
+            </div>
+        </div>
+        <div class="col">
+            <div class="form-group">
+                <label for="dielectricConstant">Dielectric Constant E<sub>r</sub></label>
+                <input type="number" class="form-control" id="dielectricConstant" value="4.4" step="0.1">
+            </div>
+            <div class="form-group">
+                <label for="electricalLength">Electrical Length (degrees)</label>
+                <input type="number" class="form-control" id="electricalLength" value="45" step="5">
+            </div>
+            <div class="form-group">
+                <label for="frequency">Frequency (GHz)</label>
+                <input type="number" class="form-control" id="frequency" value="2.0" step="0.1">
+            </div>
+        </div>
+    </div>
+
+    <hr style="border: 1px solid #000; margin: 20px 0;">
+
+    
+    <div id="results" class="result-box">
+    </div>
+
+</div>
+
+<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+<script>
+    function calculateMicrostrip() {
+    const Z0 = parseFloat(document.getElementById("targetImpedance").value);
+    const h = parseFloat(document.getElementById("substrateHeight").value) / 1000; // convert mm to m
+    const εr = parseFloat(document.getElementById("dielectricConstant").value);
+
+    // Apply minimum limits for initial step fraction and tolerance
+    let stepFraction = parseFloat(document.getElementById("initialStepFraction").value);
+    stepFraction = Math.max(stepFraction, 0.001); // Set minimum value of 0.001
+
+    let tolerance = parseFloat(document.getElementById("tolerance").value);
+    tolerance = Math.max(tolerance, 0.0000001); // Set minimum value of 0.0000001
+
+    const electricalLength = parseFloat(document.getElementById("electricalLength").value);
+    const frequency = parseFloat(document.getElementById("frequency").value) * 1e9; // convert GHz to Hz
+
+    const SPEED_OF_LIGHT = 299792458; // Speed of light in m/s (constant)
+
+    // Function to calculate effective dielectric constant
+    function calc_effective_dielectric_constant(er, h, w) {
+        if (w / h > 1) {
+            return ((er + 1) / 2) + ( ((er - 1) / 2) * (1 / Math.sqrt(1 + (12 * (h / w) ) )) );
+        } else {
+            return ((er + 1) / 2) + (  ((er - 1) / 2) * ( (1 / Math.sqrt(1 + (12 * (h / w)) ) ) + (0.04 * Math.pow(1 - (w / h), 2)) )  );
+        }
+    }
+
+    // Function to calculate characteristic impedance
+    function calc_characteristic_impedance(er_eff, h, w) {
+        if (w / h <= 1) {
+            return (60 / Math.sqrt(er_eff)) * Math.log( (8 * h / w ) + (w / (4 * h))  );
+        } else {
+            return (120 * Math.PI) / (  Math.sqrt(er_eff) * (  (w / h) + 1.393 + (0.667 * Math.log((w / h) + 1.444))  )  );
+        }
+    }
+
+    // Iterative width calculation
+    let width = 0.1; // initial width in m
+
+    while (true) {
+        // Calculate effective dielectric constant and impedance
+        const er_eff = calc_effective_dielectric_constant(εr, h, width);
+        const z0 = calc_characteristic_impedance(er_eff, h, width);
+
+        // Check if we're close enough to the target impedance
+        if (Math.abs(z0 - Z0) < tolerance) {
+            const lambda_eff = SPEED_OF_LIGHT / (frequency * Math.sqrt(er_eff)); // effective wavelength
+            const physical_length = lambda_eff * (electricalLength / 360); // in meters
+
+            // Display results
+            document.getElementById("results").innerHTML = `
+                <h3 class="mt-4 result-heading">Results:</h3>
+                <p class='result-value'>Line Width (w): ${(width * 1000).toFixed(4)} mm</p>
+                <p class='result-value'>Physical Length (l): ${(physical_length * 1000).toFixed(4)} mm</p>
+                <p class='result-value'>Effective Dielectric Constant (ε<sub>eff</sub>): ${er_eff.toFixed(4)}</p>
+                <p class='result-value'>Found Solution for Z<sub>0</sub> = ${z0.toFixed(2)} Ω</p>
+                <p class='result-value'>Accuracy: ${(100 - (Math.abs(z0 - Z0) * 100) / Z0).toFixed(2)}%</p>
+            `;
+
+            return;
+        }
+
+        // Adjust the step size dynamically as a fraction of the current width
+        const step_size = stepFraction * width;
+
+        // Adjust width based on whether the impedance is too high or too low
+        if (z0 > Z0) {
+            width += step_size; // Increase width if impedance is too high
+        } else {
+            width -= step_size; // Decrease width if impedance is too low
+        }
+
+        // Ensure the width never becomes negative
+        if (width < 0.00001) {
+            document.getElementById("results").innerHTML = "<p class='result-value'>!!! Very LOW Width: " + (width * 1000) + " mm</p>";
+            return;
+        }
+    }
+}
+
+// Event listeners for input fields
+document.querySelectorAll('input').forEach(input => {
+    input.addEventListener('input', calculateMicrostrip);
+});
+
+// Initial calculation
+calculateMicrostrip(); // to show initial results
+
+</script>
+
+</body>
+</html>
